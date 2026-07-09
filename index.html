@@ -338,9 +338,61 @@
     .tile[href]:hover{transform:none}
     .tools a.tool-cta{animation:none}
   }
+
+  /* ---- password gate ---- */
+  #gate{
+    position:fixed; inset:0; z-index:9999;
+    display:flex; align-items:center; justify-content:center;
+    background:var(--bg); padding:1.5rem;
+  }
+  #gate.hidden{ display:none; }
+  html.gated, html.gated body{ overflow:hidden; }
+  .gate-card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:2rem 1.8rem;
+    width:100%; max-width:340px;
+    text-align:center;
+    box-shadow:0 6px 30px rgba(30,65,100,.10);
+    display:flex; flex-direction:column; gap:.85rem;
+  }
+  .gate-card h2{
+    font-family:"Archivo",sans-serif; font-weight:800;
+    font-size:1.5rem; color:var(--text); line-height:1.1;
+  }
+  .gate-card p{ font-size:.9rem; color:var(--muted); margin-bottom:.2rem; }
+  .gate-card input{
+    font-family:inherit; font-size:1rem;
+    padding:.7rem .9rem;
+    border:1px solid var(--border2); border-radius:10px;
+    background:var(--bg); color:var(--text); outline:none;
+    transition:border-color .15s ease;
+  }
+  .gate-card input:focus{ border-color:var(--teal); }
+  .gate-card button{
+    font-family:inherit; font-weight:700; font-size:.95rem;
+    color:#fff; border:none; border-radius:999px;
+    padding:.68rem 1rem; cursor:pointer;
+    background:linear-gradient(135deg,var(--navy),var(--teal));
+    transition:filter .18s ease, transform .18s ease;
+  }
+  .gate-card button:hover{ filter:brightness(1.05); transform:translateY(-1px); }
+  .gate-err{ color:#c0392b; font-size:.82rem; min-height:1em; }
 </style>
 </head>
 <body>
+
+  <!-- ===== Daily password gate (client-side, remembers for 24h) ===== -->
+  <div id="gate">
+    <form id="gate-form" class="gate-card">
+      <h2>Team Hub</h2>
+      <p>Enter the team password to continue.</p>
+      <input type="password" id="gate-input" placeholder="Password" autocomplete="current-password" aria-label="Team password" />
+      <button type="submit">Enter</button>
+      <div class="gate-err" id="gate-err" role="alert"></div>
+    </form>
+  </div>
 
   <main>
     <div class="hero">
@@ -468,6 +520,62 @@
     }
     btn.addEventListener('click',doCopy);
     btn.addEventListener('keydown',function(e){ if(e.key==='Enter'||e.key===' '){ doCopy(e); } });
+  });
+})();
+</script>
+
+<script>
+/* ===== Daily password gate =====
+   Client-side gate: keeps casual visitors out. Not strong security —
+   a static page can't truly hide content. Stores a SHA-256 hash only,
+   and remembers a successful login for 24 hours via localStorage. */
+(function(){
+  var HASH = "146879387a6ce4bf9f380801b930e3820ce70a9989f2c440233f468334ddd84a"; // sha256("deals")
+  var KEY  = "oho_teamhub_auth";
+  var DAY  = 24 * 60 * 60 * 1000;
+
+  var gate  = document.getElementById('gate');
+  var form  = document.getElementById('gate-form');
+  var input = document.getElementById('gate-input');
+  var err   = document.getElementById('gate-err');
+
+  function unlock(){
+    gate.classList.add('hidden');
+    document.documentElement.classList.remove('gated');
+  }
+  function lock(){
+    document.documentElement.classList.add('gated');
+    if(input){ input.focus(); }
+  }
+  function authedRecently(){
+    try{
+      var t = parseInt(localStorage.getItem(KEY) || '0', 10);
+      return t && (Date.now() - t) < DAY;
+    }catch(e){ return false; }
+  }
+  async function sha256hex(str){
+    var buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return Array.prototype.map.call(new Uint8Array(buf), function(b){
+      return b.toString(16).padStart(2,'0');
+    }).join('');
+  }
+
+  if(authedRecently()){ unlock(); } else { lock(); }
+
+  form.addEventListener('submit', async function(e){
+    e.preventDefault();
+    var val = input.value || '';
+    var ok = false;
+    try{ ok = (await sha256hex(val)) === HASH; }catch(_){ ok = false; }
+    if(ok){
+      try{ localStorage.setItem(KEY, String(Date.now())); }catch(_){}
+      err.textContent = '';
+      unlock();
+    }else{
+      err.textContent = 'Incorrect password. Try again.';
+      input.value = '';
+      input.focus();
+    }
   });
 })();
 </script>
